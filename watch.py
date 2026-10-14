@@ -4,11 +4,12 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 
 CHANNEL = "kryvbasvodokanal"
-# біркун — ловить Біркуна / Біркуну / Біркуні, а также русские и смешанные написания
+# біркун — ловит Біркуна / Біркуну / Біркуні, а также русские и смешанные написания
 PATTERN = re.compile(r"б[іiи]ркун", re.IGNORECASE)
 STATE_FILE = "state.json"
 TOKEN = os.environ["BOT_TOKEN"]
@@ -16,11 +17,18 @@ CHAT_ID = os.environ["CHAT_ID"]
 
 
 def fetch_page():
+    """Загружает страницу канала, до 3 попыток. None, если t.me не отвечает."""
     req = urllib.request.Request(
         f"https://t.me/s/{CHANNEL}", headers={"User-Agent": "Mozilla/5.0"}
     )
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode("utf-8")
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.read().decode("utf-8")
+        except Exception as e:
+            print(f"Попытка {attempt + 1}: не удалось загрузить страницу: {e}")
+            time.sleep(5)
+    return None
 
 
 def clean(raw):
@@ -66,7 +74,13 @@ def main():
         with open(STATE_FILE, encoding="utf-8") as f:
             seen = json.load(f)
 
-    posts = parse(fetch_page())
+    page = fetch_page()
+    if page is None:
+        # временный сбой сети: выходим без ошибки, следующая проверка через 10 минут
+        print("t.me недоступен, пропускаем этот запуск")
+        return
+
+    posts = parse(page)
     if not posts:
         sys.exit("Не удалось разобрать страницу канала")
 
